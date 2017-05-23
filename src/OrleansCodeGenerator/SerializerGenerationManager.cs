@@ -124,11 +124,29 @@ namespace Orleans.CodeGenerator
         {
             // A field is inaccessible for serialization if:
             // * It needs to be serialized,
+            if (field.IsNotSerialized()) return false;
+            var fieldType = field.FieldType;
+            
+            return IsFieldTypeInaccessibleForSerialization(module, targetAssembly, fieldType);
+        }
+
+        private bool IsFieldTypeInaccessibleForSerialization(Module module, Assembly targetAssembly, Type fieldType)
+        {
             // * There is not already a serializer available for it, and
+            if (this.serializationManager.HasSerializer(fieldType)) return false;
+            if (fieldType.IsConstructedGenericType &&
+                this.serializationManager.HasSerializer(fieldType.GetGenericTypeDefinition()))
+            {
+                // Check all arguments.
+                if (fieldType.GetGenericArguments()
+                    .All(arg => !this.IsFieldTypeInaccessibleForSerialization(module, targetAssembly, arg)))
+                    return false;
+            }
+
             // * The field type is not accessible for the purpose of serialization.
-            return !field.IsNotSerialized()
-                   && !this.serializationManager.HasSerializer(field.FieldType)
-                   && TypeUtilities.IsTypeIsInaccessibleForSerialization(field.FieldType, module, targetAssembly);
+            if (TypeUtilities.IsTypeIsInaccessibleForSerialization(fieldType, module, targetAssembly))
+                return true;
+            return false;
         }
 
         internal bool GetNextTypeToProcess(out Type next)
